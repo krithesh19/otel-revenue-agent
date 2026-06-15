@@ -17,7 +17,7 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
@@ -45,7 +45,7 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     correct_pass = secrets.compare_digest(credentials.password, AGENT_PASSWORD)
     if not (correct_user and correct_pass):
         raise HTTPException(status_code=401, detail="Unauthorized",
-                          headers={"WWW-Authenticate": "Basic"})
+                            headers={"WWW-Authenticate": "Basic"})
     return credentials.username
 
 
@@ -59,7 +59,6 @@ def health():
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Get reservation_stay_status_sha256
                 cur.execute("""
                     SELECT reservation_id, stay_date::text, financial_status
                     FROM public.reservations_hackathon
@@ -69,11 +68,9 @@ def health():
                 lines = [f"{r['reservation_id']}|{r['stay_date']}|{r['financial_status']}" for r in rows]
                 db_fingerprint = hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
-                # Get load manifest
                 cur.execute("SELECT dataset_revision, row_hash, scraped_at FROM public.load_manifest ORDER BY load_id DESC LIMIT 1")
                 manifest = cur.fetchone()
 
-                # Get posted stay rows count
                 cur.execute("SELECT COUNT(*) as n FROM public.reservations_hackathon WHERE reservation_status <> 'Cancelled' AND financial_status = 'Posted'")
                 posted = cur.fetchone()
 
@@ -111,23 +108,20 @@ def chat(request: ChatRequest, username: str = Depends(verify_credentials)):
         from agent.agent import get_agent
         agent = get_agent()
 
-        # Get or create session history
         session_id = request.session_id
         if session_id not in conversation_history:
             conversation_history[session_id] = []
 
-        # Add user message
         conversation_history[session_id].append({
             "role": "user",
             "content": request.message
         })
 
-        # Invoke agent with full history
-        result = agent.invoke({
-            "messages": conversation_history[session_id]
-        })
+        result = agent.invoke(
+            {"messages": conversation_history[session_id]},
+            config={"configurable": {"thread_id": session_id}}
+        )
 
-        # Extract response
         response_text = ""
         tools_used = []
         skills_loaded = []
@@ -147,7 +141,6 @@ def chat(request: ChatRequest, username: str = Depends(verify_credentials)):
             last_msg = messages[-1]
             response_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
-            # Add assistant response to history
             conversation_history[session_id].append({
                 "role": "assistant",
                 "content": response_text
@@ -209,17 +202,17 @@ def chat_ui(username: str = Depends(verify_credentials)):
 
     <script>
         const sessionId = 'session_' + Date.now();
-        
+
         function setMsg(text) {
             document.getElementById('msg-input').value = text;
         }
-        
+
         function addMsg(text, isUser, tools, skills) {
             const box = document.getElementById('chat-box');
             const div = document.createElement('div');
             div.className = isUser ? 'user-msg' : 'agent-msg';
             div.textContent = text;
-            
+
             if (!isUser && (tools?.length || skills?.length)) {
                 const toolsDiv = document.createElement('div');
                 toolsDiv.className = 'tools-used';
@@ -231,36 +224,36 @@ def chat_ui(username: str = Depends(verify_credentials)):
                 }
                 div.appendChild(toolsDiv);
             }
-            
+
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
-        
+
         async function sendMsg() {
             const input = document.getElementById('msg-input');
             const btn = document.getElementById('send-btn');
             const msg = input.value.trim();
             if (!msg) return;
-            
+
             addMsg(msg, true);
             input.value = '';
             btn.disabled = true;
-            
+
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'agent-msg loading';
             loadingDiv.id = 'loading';
             loadingDiv.textContent = 'Revenue Manager is thinking...';
             document.getElementById('chat-box').appendChild(loadingDiv);
-            
+
             try {
                 const resp = await fetch('/chat', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({message: msg, session_id: sessionId})
                 });
-                
+
                 document.getElementById('loading')?.remove();
-                
+
                 if (resp.ok) {
                     const data = await resp.json();
                     addMsg(data.response, false, data.tools_used, data.skills_loaded);
@@ -272,7 +265,7 @@ def chat_ui(username: str = Depends(verify_credentials)):
                 document.getElementById('loading')?.remove();
                 addMsg('Connection error: ' + e.message, false);
             }
-            
+
             btn.disabled = false;
             input.focus();
         }
