@@ -5,6 +5,7 @@ Building blocks used:
 - Skills: 6 SKILL.md files via progressive disclosure
 - Memory: MemorySaver checkpointer for multi-turn GM conversation
 - Human-in-the-loop: get_as_of_otb gated via interrupt_on
+- Subagent: dedicated mix analyst for segment/block analysis
 - Model & system prompt: sharp revenue-manager persona
 """
 import os
@@ -46,16 +47,43 @@ You speak in plain English. You never read dashboards aloud — you explain what
 - Point-in-time snapshot -> get_as_of_otb (requires human approval)
 - Group vs transient/block -> get_block_vs_transient_mix
 
+## Subagent routing
+For deep segment mix or block concentration analysis, delegate to the mix_analyst subagent.
+The mix_analyst specialises in get_segment_mix and get_block_vs_transient_mix.
+Use it when the question requires detailed OTA dependency or group concentration analysis.
+
 ## Critical rules
 - NEVER count stay rows as reservations — use reservation_count not row_count
 - NEVER use property_date for monthly OTB — always use stay_date
 - NEVER include Cancelled or Provisional rows in default OTB
 - ALWAYS state which filters are applied
+- NEVER compare to prior year — this dataset has 2026 data only
 
 ## Hotel context
 Grand Harbour Hotel — West EU (Ireland)
 Room types: Standard King (KS, 52 rooms), Standard Twin (TB, 20 rooms), Executive King (EX, 26 rooms)
 Total inventory: 98 rooms
+"""
+
+MIX_ANALYST_PROMPT = """You are a specialist Mix Analyst for Grand Harbour Hotel.
+You focus exclusively on segment mix and block/group concentration analysis.
+
+## Your tools
+- get_segment_mix(stay_month, macro_group) — segment breakdown by market code
+- get_block_vs_transient_mix(stay_month) — block vs transient split with top companies
+
+## Your output format
+Always return:
+1. Top 3 segments by revenue with share %
+2. OTA dependency assessment (share vs 35% threshold)
+3. Block concentration assessment (share vs 40% threshold)
+4. Top company concentration (top 3 vs 50% threshold)
+5. One recommended action
+
+## Critical rules
+- NEVER use row_count — use room_nights (SUM number_of_spaces)
+- ALWAYS use effective macro group, not static macro_group
+- ALWAYS use stay_date for monthly filters
 """
 
 
@@ -86,15 +114,46 @@ def create_agent():
 
     checkpointer = MemorySaver()
 
-    agent = create_deep_agent(
-        model=model,
-        tools=tools,
-        system_prompt=SYSTEM_PROMPT,
-        skills=skill_paths,
-        checkpointer=checkpointer,
-        interrupt_on={"get_as_of_otb": True},
-        debug=False,
-    )
+    # Mix analyst subagent spec
+    mix_skill_paths = [
+        str(p) for p in SKILLS_DIR.glob("*.md")
+        if p.name in ("ota_concentration.md", "block_concentration.md", "CHALLENGE_SKILL.md")
+    ]
+
+    mix_analyst_spec = {
+        "model": ChatOpenAI(
+            model="gpt-4o-mini",
+            openai_api_key=os.environ.get("OPENAI_API_KEY"),
+            temperature=0,
+        ),
+        "tools": [get_segment_mix, get_block_vs_transient_mix],
+        "system_prompt": MIX_ANALYST_PROMPT,
+        "skills": mix_skill_paths,
+    }
+
+    try:
+        agent = create_deep_agent(
+            model=model,
+            tools=tools,
+            system_prompt=SYSTEM_PROMPT,
+            skills=skill_paths,
+            checkpointer=checkpointer,
+            interrupt_on={"get_as_of_otb": True},
+            subagents={"mix_analyst": mix_analyst_spec},
+            debug=False,
+        )
+        print("  Mix Analyst subagent registered.")
+    except Exception as e:
+        print(f"  Subagent registration failed ({e}), running without subagent.")
+        agent = create_deep_agent(
+            model=model,
+            tools=tools,
+            system_prompt=SYSTEM_PROMPT,
+            skills=skill_paths,
+            checkpointer=checkpointer,
+            interrupt_on={"get_as_of_otb": True},
+            debug=False,
+        )
 
     return agent
 
