@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-06-16T00:29:25.297659+00:00",
+  "generated_at": "2026-06-16T01:34:53.617044+00:00",
   "dataset_revision": "2026.06.12.2",
-  "row_hash": "a8d62daa4a80a80b50a20ad411333585cb7932d00b69d3e8597077ee6a183505",
-  "scraped_at": "2026-06-15T00:42:27.661314+00:00",
-  "reservation_stay_status_sha256": "a8d62daa4a80a80b50a20ad411333585cb7932d00b69d3e8597077ee6a183505",
+  "row_hash": "3388ad54dcd4489c7e06633e2fa7600f551b8303c35ad302b54c2540fbab0f06",
+  "scraped_at": "2026-06-16T01:22:33.161885+00:00",
+  "reservation_stay_status_sha256": "3388ad54dcd4489c7e06633e2fa7600f551b8303c35ad302b54c2540fbab0f06",
   "aggregates": {
-    "total_stay_rows": 507,
-    "posted_stay_rows": 463,
-    "cancelled_reservations": 18,
-    "total_reservations": 249,
-    "reservation_ids_sha256": "ad5e0625766791b2007e7859183ac2efc8866cf2dbbfa97a090cd4f4f33e43c2"
+    "total_stay_rows": 523,
+    "posted_stay_rows": 475,
+    "cancelled_reservations": 20,
+    "total_reservations": 254,
+    "reservation_ids_sha256": "aea16e722cb664db652aafc238066566537dc2f9013d2b51b14dd5d22272e85c"
   }
 }

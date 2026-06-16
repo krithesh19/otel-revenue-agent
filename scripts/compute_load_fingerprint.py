@@ -18,10 +18,15 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
 def generate_proof(output_path: str):
-    with psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=0) as conn:
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None) as conn:
         with conn.cursor() as cur:
 
-            # reservation_stay_status_sha256
+            # Clear any cached prepared statements from pooler
+            try:
+                cur.execute("DEALLOCATE ALL")
+            except Exception:
+                pass
+
             cur.execute("""
                 SELECT reservation_id, stay_date::text, financial_status
                 FROM public.reservations_hackathon
@@ -32,25 +37,21 @@ def generate_proof(output_path: str):
             db_fingerprint = hashlib.sha256("\n".join(lines).encode()).hexdigest()
             total_stay_rows = len(rows)
 
-            # posted stay rows
             cur.execute("""
                 SELECT COUNT(*) as n FROM public.reservations_hackathon
                 WHERE reservation_status <> 'Cancelled' AND financial_status = 'Posted'
             """)
             posted = cur.fetchone()["n"]
 
-            # cancelled reservations
             cur.execute("""
                 SELECT COUNT(DISTINCT reservation_id) as n FROM public.reservations_hackathon
                 WHERE reservation_status = 'Cancelled'
             """)
             cancelled = cur.fetchone()["n"]
 
-            # total reservations
             cur.execute("SELECT COUNT(DISTINCT reservation_id) as n FROM public.reservations_hackathon")
             total_res = cur.fetchone()["n"]
 
-            # reservation_ids sha256
             cur.execute("""
                 SELECT DISTINCT reservation_id FROM public.reservations_hackathon
                 ORDER BY reservation_id
@@ -58,7 +59,6 @@ def generate_proof(output_path: str):
             ids = [r["reservation_id"] for r in cur.fetchall()]
             ids_sha = hashlib.sha256("\n".join(ids).encode()).hexdigest()
 
-            # load manifest
             cur.execute("""
                 SELECT dataset_revision, row_hash, scraped_at
                 FROM public.load_manifest ORDER BY load_id DESC LIMIT 1
